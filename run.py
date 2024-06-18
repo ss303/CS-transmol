@@ -1,7 +1,7 @@
 import sys
 import os
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../.."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 # isort: on
 from cerebras.modelzoo.common.utils.run.cli_pytorch import get_params_from_args
 
