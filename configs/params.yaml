@@ -30,4 +30,5 @@ runconfig:
     checkpoint_steps: 1000
     log_steps: 100
     seed: 42
+    model_dir: "./model_dir"
     save_losses: true
