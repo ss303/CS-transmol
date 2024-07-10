@@ -1,23 +1,34 @@
 import sys
 import os
+import inspect
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 # isort: on
-from cerebras.modelzoo.common.utils.run.cli_pytorch import get_params_from_args
+from modelzoo.common.pytorch.utils import get_params_from_args
 
 def main():
-    params = get_params_from_args()
+    parent = inspect.getouterframes(inspect.currentframe())[1]
+    run_dir = os.path.dirname(os.path.abspath(parent.filename))
+    print(run_dir)
+    params = get_params_from_args(run_dir)
     #from cerebras.modelzoo.fc_mnist.pytorch.utils import set_defaults
 
     #set_defaults(params)
 
-    from cerebras.modelzoo.common.run_utils import main
-    from cerebras.modelzoo.transmol.data import (
+    #from modelzoo.common.run_utils import main
+    from modelzoo.transmol.data import (
         get_train_dataloader,
     )
     dataloader = get_train_dataloader(params)
-    for data in dataloader:
-        print(data)
+    print(dataloader)
+    #print((rebatch(pad_idx, b) for b in dataloader))
+    #items = (rebatch(pad_idx, b) for b in dataloader)
+    i = 0
+    for b in dataloader:
+        #c = rebatch(pad_idx, b)
+        print(b.src)
+        print(i)
+        i += 1
 
 
 if __name__ == '__main__':

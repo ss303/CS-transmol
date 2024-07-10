@@ -1,11 +1,13 @@
 import os
+import sys
 import torch
-from torch.utils.data import IterableDataset, DataLoader
-import torchtext
-from torchtext.data.utils import RandomShuffler
-from torchtext.data.batch import Batch
-from torchtext import data
+from torch.utils.data import DataLoader
 import numpy as np
+
+from modelzoo.transmol.torchtext.torchtextDataset import TabularDataset
+from modelzoo.transmol.torchtext.torchtextField import Field
+from modelzoo.transmol.torchtext.torchtextIterator import Iterator, batch
+
 
 # Tokenization function for SMILES strings
 def tokenize_smiles(text):
@@ -19,13 +21,14 @@ MAX_LEN = 100
 MIN_FREQ = 1
 
 # Define Fields for source (SRC) and target (TGT) sequences
-SRC = data.Field(tokenize=tokenize_smiles, pad_token=BLANK_WORD)
-TGT = data.Field(tokenize=tokenize_smiles, init_token=BOS_WORD, eos_token=EOS_WORD, pad_token=BLANK_WORD)
+SRC = Field(tokenize=tokenize_smiles, pad_token=BLANK_WORD)
+TGT = Field(tokenize=tokenize_smiles, init_token=BOS_WORD, eos_token=EOS_WORD, pad_token=BLANK_WORD)
 train_data = None
 val_data = None
 test_data = None
 pad_idx = None
 
+global max_src_in_batch, max_tgt_in_batch
 #local_rank = int(os.environ["LOCAL_RANK"])
 #global_rank = torch.distributed.dist.get_rank()
 #device = global_rank % torch.cuda.device_count()
@@ -35,7 +38,7 @@ pad_idx = None
 def load_datasets(train_file, val_file, test_file):
     global train_data, val_data, test_data, pad_idx
     if train_data == None:
-        train_data, val_data, test_data = data.TabularDataset.splits(
+        train_data, val_data, test_data = TabularDataset.splits(
             path='.', 
             train=train_file,
             validation=val_file,
@@ -53,7 +56,7 @@ def load_datasets(train_file, val_file, test_file):
     
     return train_data, val_data, test_data
 
-
+'''
 class TabularDatasetWrapper(IterableDataset):
     def __init__(self, tabular_dataset, batch_size=1, repeat=False, batch_size_fn=None, sort_key=None, train=True, sort=None):
         """
@@ -76,11 +79,11 @@ class TabularDatasetWrapper(IterableDataset):
     def __getitem__(self, i):
         return self.examples[i]
     
-    '''
-    def __getitems__(self, indices):
-        return [self.__getitem__(idx) for idx in indices]
     
-    '''
+    #def __getitems__(self, indices):
+    #    return [self.__getitem__(idx) for idx in indices]
+    
+    
 
     def __len__(self):
         try:
@@ -141,7 +144,9 @@ class TabularDatasetWrapper(IterableDataset):
                 self.batches.append(sorted(b, key=self.sort_key))
     
 
-'''
+
+
+
 #write a wrapper class, super class is dataloader. add create_batchs as the 
 class CustomDataLoader(DataLoader):
     def __init__(self, dataset, batch_size=1, shuffle=False, batch_size_fn=None, sort_key=None, train=True, **kwargs):
@@ -150,49 +155,12 @@ class CustomDataLoader(DataLoader):
         self.train = train
         self.random_shuffler = RandomShuffler()
         super().__init__(dataset, batch_size, shuffle, **kwargs)
-        self.create_batches(dataset)
+        self._iterator = Iterator(dataset, batch_size=batch_size, #device=device,
+                            repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)),
+                            batch_size_fn=batch_size_fn, train=train)
+        
+'''
 
-    def create_batches(self, data):
-        if self.train:
-            def pool(d, random_shuffler):
-                for p in data.batch(d, self.batch_size * 100):
-                    p_batch = data.batch(
-                        sorted(p, key=self.sort_key),
-                        self.batch_size, self.batch_size_fn)
-                    for b in random_shuffler(list(p_batch)):
-                        yield b
-            self.batches = pool(data, self.random_shuffler)
-            self.iter_idx = 0
-        else:
-            self.batches = []
-            for b in data.batch(data, self.batch_size, self.batch_size_fn):
-                self.batches.append(sorted(b, key=self.sort_key))
-            self.iter_idx = 0
-    
-    def __iter__(self):
-        batch = self.batches[self.iter_idx]
-        self.iter_idx += 1
-        return batch
-
-class MyIterator(data.Iterator):
-    def create_batches(self):
-        if self.train:
-            def pool(d, random_shuffler):
-                for p in data.batch(d, self.batch_size * 100):
-                    p_batch = data.batch(
-                        sorted(p, key=self.sort_key),
-                        self.batch_size, self.batch_size_fn)
-                    for b in random_shuffler(list(p_batch)):
-                        yield b
-            self.batches = pool(self.data(), self.random_shuffler)
-            
-        else:
-            self.batches = []
-            for b in data.batch(self.data(), self.batch_size,
-                                          self.batch_size_fn):
-                self.batches.append(sorted(b, key=self.sort_key))
-
-'''    
 # Batch size function for padding
 def batch_size_fn(new, count, sofar):
     global max_src_in_batch, max_tgt_in_batch
@@ -208,7 +176,7 @@ def batch_size_fn(new, count, sofar):
 # Function to rebatch the data to match the input format
 def rebatch(pad_idx, batch):
     src, trg = batch.src.transpose(0, 1), batch.trg.transpose(0, 1)
-    src, trg = src.cuda(), trg.cuda()
+    #src, trg = src.cuda(), trg.cuda()
     return ReBatch(src, trg, pad_idx)
 
 class ReBatch:
@@ -233,27 +201,43 @@ def subsequent_mask(size):
     return torch.from_numpy(subsequent_mask) == 0
 
 
-
-
 # Functions to create data loaders as required by Cerebras
 def get_train_dataloader(params):
-    train_data, _, _ = load_datasets(params["train_input"]["train_path"], params["train_input"]["val_path"], params["eval_input"]['eval_path'])
-    train_data_wrapper = TabularDatasetWrapper(train_data, batch_size=params["train_input"]["batch_size"], repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
+    train_data, _, _ = load_datasets(params["train_input"]["data_small/train_path"], params["train_input"]["data_small/val_path"], params["eval_input"]['data_small/eval_path'])
+    #train_data_wrapper = TabularDatasetWrapper(train_data, batch_size=params["train_input"]["batch_size"], repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
     #train_iter = CustomDataLoader(train_data_wrapper, batch_size=params["train_input"]["batch_size"], shuffle=params["train_input"]["shuffle"], sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
-    train_iter = DataLoader(train_data_wrapper, batch_size = None, num_workers = 0, prefetch_factor=None, persistent_workers=None)
-    return train_iter
+    train_iter= Iterator(train_data, batch_size=params["train_input"]["batch_size"], repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)),
+                            batch_size_fn=batch_size_fn, train=True)
+    num_workers = params.get("num_workers", 0)
+    if not num_workers:
+        prefetch_factor = None
+        persistent_workers = False
+    else:
+        prefetch_factor = params.get("prefetch_factor", 10)
+        persistent_workers = params.get("persistent_workers", True)
+    train_dataloader = DataLoader(train_iter, batch_size = None, num_workers = num_workers, prefetch_factor = prefetch_factor, persistent_workers = persistent_workers)
+    #train_iter = CustomDataLoader(train_data, batch_size = params["train_input"]["batch_size"], shuffle=params["train_input"]["shuffle"], batch_size_fn=batch_size_fn, train = True)
+    params["train_input"]["SRC"] = SRC
+    params["train_input"]["TGT"] = TGT
+    params["train_input"]["pad_idx"] = pad_idx
+    return train_dataloader
 
 def get_eval_dataloader(params):
-    _, val_data, _ = load_datasets(params["train_input"]["train_path"], params["train_input"]["val_path"], params["eval_input"]['eval_path'])
+    _, val_data, _ = load_datasets(params["train_input"]["data_small/train_path"], params["train_input"]["data_small/val_path"], params["eval_input"]['data_small/eval_path'])
     #val_data_wrapper = TabularDatasetWrapper(val_data)
     #val_iter = CustomDataLoader(val_data_wrapper, batch_size=params["train_input"]["batch_size"], shuffle=params["train_input"]["shuffle"], sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
     return #(rebatch(pad_idx, b) for b in val_iter)
 
 
 #from cerebras.modelzoo.common.utils.run.cli_pytorch import get_params_from_args
-#params = {"train_input": {"train_path": "moses_train_small.csv", "val_path": "moses_val_small.csv", "exts": ["src", "trg"], "batch_size": 10, "shuffle": True}, "eval_input": {"eval_path": "moses_val_small.csv"}}
-#dataloader = get_train_dataloader(params)
-#print(dataloader)
+params = {"train_input": {"train_path": "moses_train_small.csv", "val_path": "moses_val_small.csv", "exts": ["src", "trg"], "batch_size": 10, "shuffle": True}, "eval_input": {"eval_path": "moses_val_small.csv"}}
+dataloader = get_train_dataloader(params)
+print(dataloader)
 #print((rebatch(pad_idx, b) for b in dataloader))
-#for b in dataloader:
-#    print(b.src, b.trg)
+items = (rebatch(pad_idx, b) for b in dataloader)
+i = 0
+for b in items:
+    #c = rebatch(pad_idx, b)
+    print(b.src)
+    print(i)
+    i += 1
