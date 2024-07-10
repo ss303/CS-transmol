@@ -4,10 +4,10 @@ import torch
 from tqdm import tqdm
 import warnings
 
-from modelzoo.transmol.torchtext.torchtextDataset import Dataset
-from modelzoo.transmol.torchtext.torchtextPipeline import Pipeline
-from modelzoo.transmol.torchtext.torchtextUtils import get_tokenizer, dtype_to_attr, is_tokenizer_serializable
-from modelzoo.transmol.torchtext.torchtextVocab import Vocab, SubwordVocab
+from modelzoo.CS_transmol.torchtext.torchtextDataset import Dataset
+from modelzoo.CS_transmol.torchtext.torchtextPipeline import Pipeline
+from modelzoo.CS_transmol.torchtext.torchtextUtils import get_tokenizer, dtype_to_attr, is_tokenizer_serializable
+from modelzoo.CS_transmol.torchtext.torchtextVocab import Vocab, SubwordVocab
 
 
 class RawField(object):

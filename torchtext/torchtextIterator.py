@@ -4,9 +4,9 @@ import random
 import logging
 import warnings
 import torch
-from modelzoo.transmol.torchtext.torchtextUtils import RandomShuffler
-from modelzoo.transmol.torchtext.torchtextBatch import Batch
-from modelzoo.transmol.torchtext.torchtextDataset import Dataset
+from modelzoo.CS_transmol.torchtext.torchtextUtils import RandomShuffler
+from modelzoo.CS_transmol.torchtext.torchtextBatch import Batch
+from modelzoo.CS_transmol.torchtext.torchtextDataset import Dataset
 
 logger = logging.getLogger(__name__)
 

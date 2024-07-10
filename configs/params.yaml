@@ -1,13 +1,13 @@
 train_input:
-    train_path: 'data/moses_train_small.csv'
-    val_path: 'data/moses_val_small.csv'
-    batch_size: 50
+    train_path: 'data_small/moses_train_small.csv'
+    val_path: 'data_small/moses_val_small.csv'
+    batch_size: 10
     exts: ['.src', '.trg']
     fields: [SRC, TGT]
     shuffle: True
 
 eval_input:
-    eval_path: 'data/moses_test_small.csv'
+    eval_path: 'data_small/moses_test_small.csv'
     exts: ['.src', '.trg']
     fields: [SRC, TGT]
 

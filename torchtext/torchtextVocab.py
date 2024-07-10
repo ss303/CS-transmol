@@ -10,7 +10,7 @@ import torch
 from tqdm import tqdm
 import tarfile
 
-from modelzoo.transmol.torchtext.torchtextUtils import reporthook
+from modelzoo.CS_transmol.torchtext.torchtextUtils import reporthook
 
 from collections import Counter
 

@@ -8,8 +8,8 @@ from functools import partial
 
 import torch.utils.data
 
-from modelzoo.transmol.torchtext.torchtextUtils import RandomShuffler, download_from_url, unicode_csv_reader
-from modelzoo.transmol.torchtext.torchtextExample import Example
+from modelzoo.CS_transmol.torchtext.torchtextUtils import RandomShuffler, download_from_url, unicode_csv_reader
+from modelzoo.CS_transmol.torchtext.torchtextExample import Example
 
 
 class Dataset(torch.utils.data.Dataset):
