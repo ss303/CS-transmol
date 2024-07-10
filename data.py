@@ -4,9 +4,9 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 
-from modelzoo.transmol.torchtext.torchtextDataset import TabularDataset
-from modelzoo.transmol.torchtext.torchtextField import Field
-from modelzoo.transmol.torchtext.torchtextIterator import Iterator, batch
+from modelzoo.CS_transmol.torchtext.torchtextDataset import TabularDataset
+from modelzoo.CS_transmol.torchtext.torchtextField import Field
+from modelzoo.CS_transmol.torchtext.torchtextIterator import Iterator, batch
 
 
 # Tokenization function for SMILES strings

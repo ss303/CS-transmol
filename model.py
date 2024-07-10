@@ -660,7 +660,7 @@ class MultiGPULossCompute:
 
 #Step 1.2 Define PyTorchBaseModel
 class TransmolModel(nn.Module):
-    def __init__(self, params, device = None):
+    def __init__(self, params):
         self.SRC = params["train_input"]["SRC"]
         self.TGT = params["train_input"]["TGT"]
         self.pad_idx = params["train_input"]["pad_idx"]
@@ -670,7 +670,7 @@ class TransmolModel(nn.Module):
 
         self.loss_fn = run_epoch
         ...
-        super().__init__(params=params, model=self.model, device=device)
+        super().__init__(params=params, model=self.model)
     
 
     

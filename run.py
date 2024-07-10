@@ -16,7 +16,7 @@ def main():
     #set_defaults(params)
 
     #from modelzoo.common.run_utils import main
-    from modelzoo.transmol.data import (
+    from modelzoo.CS_transmol.data import (
         get_train_dataloader,
     )
     dataloader = get_train_dataloader(params)
