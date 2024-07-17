@@ -203,11 +203,11 @@ def subsequent_mask(size):
 
 # Functions to create data loaders as required by Cerebras
 def get_train_dataloader(params):
-    train_data, _, _ = load_datasets(params["train_input"]["data_small/train_path"], params["train_input"]["data_small/val_path"], params["eval_input"]['data_small/eval_path'])
+    train_data, _, _ = load_datasets(params["train_input"]["train_path"], params["train_input"]["val_path"], params["eval_input"]['eval_path'])
     #train_data_wrapper = TabularDatasetWrapper(train_data, batch_size=params["train_input"]["batch_size"], repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
     #train_iter = CustomDataLoader(train_data_wrapper, batch_size=params["train_input"]["batch_size"], shuffle=params["train_input"]["shuffle"], sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
     train_iter= Iterator(train_data, batch_size=params["train_input"]["batch_size"], repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)),
-                            batch_size_fn=batch_size_fn, train=True)
+                            batch_size_fn=batch_size_fn, pad=pad_idx, train=True)
     num_workers = params.get("num_workers", 0)
     if not num_workers:
         prefetch_factor = None
@@ -215,7 +215,9 @@ def get_train_dataloader(params):
     else:
         prefetch_factor = params.get("prefetch_factor", 10)
         persistent_workers = params.get("persistent_workers", True)
-    train_dataloader = DataLoader(train_iter, batch_size = None, num_workers = num_workers, prefetch_factor = prefetch_factor, persistent_workers = persistent_workers)
+    train_dataloader = DataLoader(train_iter, batch_size = None, num_workers = num_workers, 
+                                  #prefetch_factor = prefetch_factor, persistent_workers = persistent_workers
+                                  )
     #train_iter = CustomDataLoader(train_data, batch_size = params["train_input"]["batch_size"], shuffle=params["train_input"]["shuffle"], batch_size_fn=batch_size_fn, train = True)
     params["train_input"]["SRC"] = SRC
     params["train_input"]["TGT"] = TGT
@@ -223,21 +225,29 @@ def get_train_dataloader(params):
     return train_dataloader
 
 def get_eval_dataloader(params):
-    _, val_data, _ = load_datasets(params["train_input"]["data_small/train_path"], params["train_input"]["data_small/val_path"], params["eval_input"]['data_small/eval_path'])
-    #val_data_wrapper = TabularDatasetWrapper(val_data)
-    #val_iter = CustomDataLoader(val_data_wrapper, batch_size=params["train_input"]["batch_size"], shuffle=params["train_input"]["shuffle"], sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
-    return #(rebatch(pad_idx, b) for b in val_iter)
-
+    _, val_data, _ = load_datasets(params["train_input"]["train_path"], params["train_input"]["val_path"], params["eval_input"]['eval_path'])
+    val_iter = Iterator(val_data, batch_size=params["train_input"]["batch_size"], repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)),
+                            batch_size_fn=batch_size_fn, pad=pad_idx, train=False)
+    num_workers = params.get("num_workers", 0)
+    if not num_workers:
+        prefetch_factor = None
+        persistent_workers = False
+    else:
+        prefetch_factor = params.get("prefetch_factor", 10)
+        persistent_workers = params.get("persistent_workers", True)
+    val_dataloader = DataLoader(val_iter, batch_size = None, num_workers = num_workers, prefetch_factor = prefetch_factor, 
+                                  persistent_workers = persistent_workers)
+    return val_dataloader
 
 #from cerebras.modelzoo.common.utils.run.cli_pytorch import get_params_from_args
-params = {"train_input": {"train_path": "moses_train_small.csv", "val_path": "moses_val_small.csv", "exts": ["src", "trg"], "batch_size": 10, "shuffle": True}, "eval_input": {"eval_path": "moses_val_small.csv"}}
-dataloader = get_train_dataloader(params)
-print(dataloader)
+#params = {"train_input": {"train_path": "moses_train_small.csv", "val_path": "moses_val_small.csv", "exts": ["src", "trg"], "batch_size": 10, "shuffle": True}, "eval_input": {"eval_path": "moses_val_small.csv"}}
+#dataloader = get_train_dataloader(params)
+#print(dataloader)
 #print((rebatch(pad_idx, b) for b in dataloader))
-items = (rebatch(pad_idx, b) for b in dataloader)
-i = 0
-for b in items:
-    #c = rebatch(pad_idx, b)
-    print(b.src)
-    print(i)
-    i += 1
+#items = (rebatch(pad_idx, b) for b in dataloader)
+#i = 0
+#for b in items:
+#    #c = rebatch(pad_idx, b)
+#    print(b.src)
+#    print(i)
+#    i += 1

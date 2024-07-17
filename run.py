@@ -7,28 +7,21 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from modelzoo.common.pytorch.utils import get_params_from_args
 
 def main():
-    parent = inspect.getouterframes(inspect.currentframe())[1]
-    run_dir = os.path.dirname(os.path.abspath(parent.filename))
-    print(run_dir)
-    params = get_params_from_args(run_dir)
-    #from cerebras.modelzoo.fc_mnist.pytorch.utils import set_defaults
-
+    #parent = inspect.getouterframes(inspect.currentframe())[1]
+    #run_dir = os.path.dirname(os.path.abspath(parent.filename))
+    #print(run_dir)
+    params = get_params_from_args()
+    #from modelzoo.fc_mnist.pytorch.utils import set_defaults
     #set_defaults(params)
 
-    #from modelzoo.common.run_utils import main
+    from modelzoo.common.run_utils import main
     from modelzoo.CS_transmol.data import (
         get_train_dataloader,
+        get_eval_dataloader
     )
-    dataloader = get_train_dataloader(params)
-    print(dataloader)
-    #print((rebatch(pad_idx, b) for b in dataloader))
-    #items = (rebatch(pad_idx, b) for b in dataloader)
-    i = 0
-    for b in dataloader:
-        #c = rebatch(pad_idx, b)
-        print(b.src)
-        print(i)
-        i += 1
+    from modelzoo.CS_transmol.model import TransmolModel
+
+    main(params, TransmolModel, get_train_dataloader, get_eval_dataloader)
 
 
 if __name__ == '__main__':

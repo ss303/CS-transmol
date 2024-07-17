@@ -595,46 +595,44 @@ class LabelSmoothing(nn.Module):
 
 class MultiGPULossCompute:
     "A multi-gpu loss compute and train function."
-    def __init__(self, generator, criterion, devices, opt=None, chunk_size=5):
+    def __init__(self, generator, criterion, devices=None, opt=None, chunk_size=5):
         # Send out to different gpus.
         self.generator = generator
-        self.criterion = nn.parallel.replicate(criterion, 
-                                               devices=devices)
+        #self.criterion = nn.parallel.replicate(criterion, devices=devices)
+        self.criterion = criterion
         self.opt = opt
-        self.devices = devices
+        #self.devices = devices
         self.chunk_size = chunk_size
         
     def __call__(self, out, targets, normalize):
         total = 0.0
-        generator = nn.parallel.replicate(self.generator, 
-                                                devices=self.devices)
-        out_scatter = nn.parallel.scatter(out, 
-                                          target_gpus=self.devices)
-        out_grad = [[] for _ in out_scatter]
-        targets = nn.parallel.scatter(targets, 
-                                      target_gpus=self.devices)
+        #generator = nn.parallel.replicate(self.generator, devices=self.devices)
+        #out_scatter = nn.parallel.scatter(out, target_gpus=self.devices)
+        out_grad = [[] for _ in out]
+        #targets = nn.parallel.scatter(targets, target_gpus=self.devices)
 
         # Divide generating into chunks.
         chunk_size = self.chunk_size
-        for i in range(0, out_scatter[0].size(1), chunk_size):
+        for i in range(0, out[0].size(1), chunk_size):
             # Predict distributions
             out_column = [[Variable(o[:, i:i+chunk_size].data, 
                                     requires_grad=self.opt is not None)] 
-                           for o in out_scatter]
-            gen = nn.parallel.parallel_apply(generator, out_column)
+                           for o in out]
+            #gen = nn.parallel.parallel_apply(self.generator, out_column)
+            gen = [self.generator(col[0]) for col in out_column]
 
             # Compute loss. 
             y = [(g.contiguous().view(-1, g.size(-1)), 
                   t[:, i:i+chunk_size].contiguous().view(-1)) 
                  for g, t in zip(gen, targets)]
-            loss = nn.parallel.parallel_apply(self.criterion, y)
+            #loss = nn.parallel.parallel_apply(self.criterion, y)
+            loss = [self.criterion(g, t) for g, t in y]
 
             # Sum and normalize loss
-            l = nn.parallel.gather(loss, 
-                                   target_device=self.devices[0])
+            #l = nn.parallel.gather(loss, target_device=self.devices[0])
             # l = l.sum()[0] / normalize
             # total += l.data[0]
-            l = l.sum() / normalize
+            l = loss.sum() / normalize
             total += l.data
 
             # Backprop loss to output of transformer
@@ -647,9 +645,8 @@ class MultiGPULossCompute:
         if self.opt is not None:
             out_grad = [Variable(torch.cat(og, dim=1)) for og in out_grad]
             o1 = out
-            o2 = nn.parallel.gather(out_grad, 
-                                    target_device=self.devices[0])
-            o1.backward(gradient=o2)
+            #o2 = nn.parallel.gather(out_grad, target_device=self.devices[0])
+            o1.backward(gradient=out_grad)
             self.opt.step()
             self.opt.optimizer.zero_grad()
         return total * normalize
@@ -668,23 +665,23 @@ class TransmolModel(nn.Module):
         self.criterion = LabelSmoothing(size=len(self.TGT.vocab), padding_idx=self.pad_idx, smoothing=0.1)
         self.model_opt = NoamOpt(self.model.src_embed[0].d_model, 1, 2000, torch.optim.Adam(self.model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
 
-        self.loss_fn = run_epoch
-        ...
+        #self.loss_fn = run_epoch
+        
         super().__init__(params=params, model=self.model)
     
 
     
     def __call__(self, data):
-        ...
+        '''
         inputs, targets = data
         outputs = self.model(inputs)
         loss = self.loss_fn(outputs, targets)
-
+        '''
         self.model.train()
         
-        run_epoch(data, self.model, MultiGPULossCompute(self.model.generator, self.criterion, devices=m_devices, opt=self.model_opt))
+        run_epoch(data, self.model, MultiGPULossCompute(self.model.generator, self.criterion, opt=self.model_opt))
         self.model.eval()
-        loss = run_epoch(data, self.model, MultiGPULossCompute(self.model.generator, self.criterion, devices=m_devices, opt=None))
-        print(loss)
+        loss = run_epoch(data, self.model, MultiGPULossCompute(self.model.generator, self.criterion, opt=None))
+        #print(loss)
 
         return loss
