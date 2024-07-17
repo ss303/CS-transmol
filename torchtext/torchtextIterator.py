@@ -1,5 +1,6 @@
 import math
 import random
+import numpy as np
 
 import logging
 import warnings
@@ -42,12 +43,13 @@ class Iterator(torch.utils.data.IterableDataset):
     """
 
     def __init__(self, dataset, batch_size, sort_key=None, device=None,
-                 batch_size_fn=None, train=True,
+                 batch_size_fn=None, pad=None, train=True,
                  repeat=False, shuffle=None, sort=None,
                  sort_within_batch=None):
         warnings.warn('{} class will be retired soon and moved to torchtext.legacy. Please see the most recent release notes for further information.'.format(self.__class__.__name__), UserWarning)
         self.batch_size, self.train, self.dataset = batch_size, train, dataset
         self.batch_size_fn = batch_size_fn
+        self.pad = pad
         self.iterations = 0
         self.repeat = repeat
         self.shuffle = train if shuffle is None else shuffle
@@ -155,6 +157,7 @@ class Iterator(torch.utils.data.IterableDataset):
     def epoch(self):
         return math.floor(self.iterations / len(self))
 
+
     def __len__(self):
         if self.batch_size_fn is not None:
             raise NotImplementedError
@@ -177,7 +180,8 @@ class Iterator(torch.utils.data.IterableDataset):
                         minibatch.reverse()
                     else:
                         minibatch.sort(key=self.sort_key, reverse=True)
-                yield Batch(minibatch, self.dataset, self.device)
+                b = Batch(minibatch, self.dataset, self.device)
+                yield rebatch(self.pad, b)
             if not self.repeat:
                 return
 
@@ -193,6 +197,32 @@ class Iterator(torch.utils.data.IterableDataset):
         self._random_state_this_epoch = state_dict["random_state_this_epoch"]
         self._restored_from_state = True
 
+# Function to rebatch the data to match the input format
+def rebatch(pad_idx, batch):
+    src, trg = batch.src.transpose(0, 1), batch.trg.transpose(0, 1)
+    #src, trg = src.cuda(), trg.cuda()
+    return ReBatch(src, trg, pad_idx)
+
+class ReBatch:
+        def __init__(self, src, trg=None, pad=0):
+            self.src = src
+            self.src_mask = (src != pad).unsqueeze(-2)
+            if trg is not None:
+                self.trg = trg[:, :-1]
+                self.trg_y = trg[:, 1:]
+                self.trg_mask = self.make_std_mask(self.trg, pad)
+                self.ntokens = (self.trg_y != pad).data.sum()
+
+        @staticmethod
+        def make_std_mask(tgt, pad):
+            tgt_mask = (tgt != pad).unsqueeze(-2)
+            tgt_mask = tgt_mask & subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data)
+            return tgt_mask
+
+def subsequent_mask(size):
+    attn_shape = (1, size, size)
+    subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
+    return torch.from_numpy(subsequent_mask) == 0
 
 class BPTTIterator(Iterator):
     """Defines an iterator for language modeling tasks that use BPTT.
