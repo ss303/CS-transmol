@@ -1,7 +1,7 @@
 train_input:
     train_path: 'data_small/moses_train_small.csv'
     val_path: 'data_small/moses_val_small.csv'
-    batch_size: 10
+    batch_size: 50000
     exts: ['.src', '.trg']
     fields: [SRC, TGT]
     shuffle: True
@@ -26,9 +26,9 @@ optimizer:
     loss_scaling_factor: 1.0
 
 runconfig:
-    max_steps: 100000
-    checkpoint_steps: 1000
-    log_steps: 100
+    max_steps: 50
+    checkpoint_steps: 4
+    log_steps: 1
     seed: 42
     model_dir: "./model_dir"
     save_losses: true
