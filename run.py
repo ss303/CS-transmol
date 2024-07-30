@@ -1,32 +1,33 @@
 import sys
 import os
-import inspect
+#import inspect
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 # isort: on
-from modelzoo.common.pytorch.utils import get_params_from_args
+#from modelzoo.common.pytorch.utils import get_params_from_args
+from modelzoo.common.pytorch.run_utils import run
 
 def main():
     #parent = inspect.getouterframes(inspect.currentframe())[1]
     #run_dir = os.path.dirname(os.path.abspath(parent.filename))
     #print(run_dir)
-    params = get_params_from_args()
+    #params = get_params_from_args(run_dir)
     #from modelzoo.fc_mnist.pytorch.utils import set_defaults
     #set_defaults(params)
 
-    from modelzoo.common.run_utils import main
+    #from modelzoo.common.run_utils import main
     from modelzoo.CS_transmol.data import (
         get_train_dataloader,
         get_eval_dataloader
     )
+
     from modelzoo.CS_transmol.model import TransmolModel
 
-    main(params, TransmolModel, get_train_dataloader, get_eval_dataloader)
+    run(TransmolModel, get_train_dataloader, get_eval_dataloader)
 
 
 if __name__ == '__main__':
     main()
-
 
 
 
