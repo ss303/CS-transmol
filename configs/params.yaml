@@ -12,18 +12,17 @@ eval_input:
     fields: [SRC, TGT]
 
 model:
-    d_model: 512
-    nhead: 8
-    num_encoder_layers: 6
-    num_decoder_layers: 6
-    dim_feedforward: 2048
+    name: "transmol"
+    mixed_precision: True
     dropout: 0.1
-    activation: 'relu'
+    activation_fn: "relu"
 
 optimizer:
     optimizer_type: 'adam'
-    learning_rate: 0.0001
-    loss_scaling_factor: 1.0
+    learning_rate: 0
+    beta1: 0.9
+    beta2: 0.98
+    eps: 1e-9
 
 runconfig:
     max_steps: 50

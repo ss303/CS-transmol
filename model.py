@@ -7,6 +7,16 @@ import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
 
+import logging
+import sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.FileHandler("train_CS.log"), logging.StreamHandler(sys.stdout)],
+)
+
+logger = logging.getLogger(__name__)
 
 class EncoderDecoder(nn.Module):
     """
@@ -388,11 +398,6 @@ class DecoderLayer(nn.Module):
         x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))
         return self.sublayer[2](x, self.feed_forward)
 
-def subsequent_mask(size):
-    "Mask out subsequent positions."
-    attn_shape = (1, size, size)
-    subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
-    return torch.from_numpy(subsequent_mask) == 0
 
 def attention(query, key, value, mask=None, dropout=None):
     "Compute 'Scaled Dot Product Attention'"
@@ -592,7 +597,70 @@ class LabelSmoothing(nn.Module):
         self.true_dist = true_dist
         return self.criterion(x, Variable(true_dist, requires_grad=False))
 
+'''
+class MultiGPULossCompute:
+    "A multi-gpu loss compute and train function."
+    def __init__(self, generator, criterion, devices, opt=None, chunk_size=5):
+        # Send out to different gpus.
+        self.generator = generator
+        self.criterion = nn.parallel.replicate(criterion, 
+                                               devices=devices)
+        self.opt = opt
+        self.devices = devices
+        self.chunk_size = chunk_size
+        
+    def __call__(self, out, targets, normalize):
+        total = 0.0
+        generator = nn.parallel.replicate(self.generator, 
+                                                devices=self.devices)
+        out_scatter = nn.parallel.scatter(out, 
+                                          target_gpus=self.devices)
+        out_grad = [[] for _ in out_scatter]
+        targets = nn.parallel.scatter(targets, 
+                                      target_gpus=self.devices)
 
+        # Divide generating into chunks.
+        chunk_size = self.chunk_size
+        for i in range(0, out_scatter[0].size(1), chunk_size):
+            # Predict distributions
+            out_column = [[Variable(o[:, i:i+chunk_size].data, 
+                                    requires_grad=self.opt is not None)] 
+                           for o in out_scatter]
+            gen = nn.parallel.parallel_apply(generator, out_column)
+
+            # Compute loss. 
+            y = [(g.contiguous().view(-1, g.size(-1)), 
+                  t[:, i:i+chunk_size].contiguous().view(-1)) 
+                 for g, t in zip(gen, targets)]
+            loss = nn.parallel.parallel_apply(self.criterion, y)
+
+            # Sum and normalize loss
+            l = nn.parallel.gather(loss, 
+                                   target_device=self.devices[0])
+            # l = l.sum()[0] / normalize
+            # total += l.data[0]
+            l = l.sum() / normalize
+            total += l.data
+
+            # Backprop loss to output of transformer
+            if self.opt is not None:
+                l.backward()
+                for j, l in enumerate(loss):
+                    out_grad[j].append(out_column[j][0].grad.data.clone())
+
+        # Backprop all loss through transformer.            
+        if self.opt is not None:
+            out_grad = [Variable(torch.cat(og, dim=1)) for og in out_grad]
+            o1 = out
+            o2 = nn.parallel.gather(out_grad, 
+                                    target_device=self.devices[0])
+            o1.backward(gradient=o2)
+            self.opt.step()
+            self.opt.optimizer.zero_grad()
+        return total * normalize
+
+
+'''
 class MultiGPULossCompute:
     "A multi-gpu loss compute and train function."
     def __init__(self, generator, criterion, devices=None, opt=None, chunk_size=5):
@@ -608,80 +676,113 @@ class MultiGPULossCompute:
         total = 0.0
         #generator = nn.parallel.replicate(self.generator, devices=self.devices)
         #out_scatter = nn.parallel.scatter(out, target_gpus=self.devices)
-        out_grad = [[] for _ in out]
+        out_grad = []
         #targets = nn.parallel.scatter(targets, target_gpus=self.devices)
+        #out = [out]
 
         # Divide generating into chunks.
         chunk_size = self.chunk_size
-        for i in range(0, out[0].size(1), chunk_size):
+        logger.info('chunk_size:', self.chunk_size)
+        logger.info('out size:', out.size(1))
+        for i in range(0, out.size(1), chunk_size):
             # Predict distributions
-            out_column = [[Variable(o[:, i:i+chunk_size].data, 
-                                    requires_grad=self.opt is not None)] 
-                           for o in out]
+            out_column = Variable(out[:, i:i+chunk_size].data, 
+                                    requires_grad=self.opt is not None)
+            logger.debug('out_column:', out_column)
             #gen = nn.parallel.parallel_apply(self.generator, out_column)
-            gen = [self.generator(col[0]) for col in out_column]
+            gen = self.generator(out_column)
+            logger.debug('gen:', gen)
+            logger.debug("gen size: ", gen.size(-1))
+            #torch.cat(col, dim=0)
 
             # Compute loss. 
-            y = [(g.contiguous().view(-1, g.size(-1)), 
-                  t[:, i:i+chunk_size].contiguous().view(-1)) 
-                 for g, t in zip(gen, targets)]
+            g = gen.contiguous().view(-1, gen.size(-1))
+            logger.debug("g: ", g)
+            logger.debug("g size: ", g.size(-1))
+            t = targets[:, i:i+chunk_size].contiguous().view(-1)
+            logger.debug("t: ", t)
+            logger.debug("t size: ", t.size(-1))
             #loss = nn.parallel.parallel_apply(self.criterion, y)
-            loss = [self.criterion(g, t) for g, t in y]
+            loss = self.criterion(g, t)
+            logger.debug("loss: ", loss)
 
             # Sum and normalize loss
             #l = nn.parallel.gather(loss, target_device=self.devices[0])
             # l = l.sum()[0] / normalize
             # total += l.data[0]
-            l = loss.sum() / normalize
+            l = loss / normalize
+            logger.debug("l: ", l)
             total += l.data
 
             # Backprop loss to output of transformer
             if self.opt is not None:
                 l.backward()
-                for j, l in enumerate(loss):
-                    out_grad[j].append(out_column[j][0].grad.data.clone())
+                out_grad.append(out_column.grad.data.clone())
 
+        logger.info('out_grad: ', out_grad)
         # Backprop all loss through transformer.            
         if self.opt is not None:
-            out_grad = [Variable(torch.cat(og, dim=1)) for og in out_grad]
+            out_grad = Variable(torch.cat(out_grad, dim=1))
+            logger.info('out_grad transformed: ', out_grad)
             o1 = out
             #o2 = nn.parallel.gather(out_grad, target_device=self.devices[0])
             o1.backward(gradient=out_grad)
             self.opt.step()
             self.opt.optimizer.zero_grad()
+        logger.info('loss return: ', total * normalize)
         return total * normalize
 
 
-
-
+from modelzoo.common.pytorch.PyTorchBaseModel import PyTorchBaseModel
+from modelzoo.common.pytorch import modes
+from modelzoo.CS_transmol.data import load_datasets
 
 #Step 1.2 Define PyTorchBaseModel
-class TransmolModel(nn.Module):
-    def __init__(self, params):
-        self.SRC = params["train_input"]["SRC"]
-        self.TGT = params["train_input"]["TGT"]
-        self.pad_idx = params["train_input"]["pad_idx"]
+class TransmolModel(PyTorchBaseModel):
+    def __init__(self, params, device=None):
+        #super().__init__()
+        self.SRC, self.TGT, self.pad_idx  = load_datasets(params["train_input"]["train_path"], params["train_input"]["val_path"], params["eval_input"]['eval_path'], want_fields=True)
+        logger.info("SRC len: ", len(self.SRC.vocab))
+        logger.info("TGT len: ", len(self.TGT.vocab))
+        logger.info("pad_idx: ", self.pad_idx)
         self.model = make_model(len(self.SRC.vocab), len(self.TGT.vocab), N=6)
-        self.criterion = LabelSmoothing(size=len(self.TGT.vocab), padding_idx=self.pad_idx, smoothing=0.1)
-        self.model_opt = NoamOpt(self.model.src_embed[0].d_model, 1, 2000, torch.optim.Adam(self.model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
+        super().__init__(params=params, model=self.model, device=device)
 
+        self.criterion = LabelSmoothing(size=len(self.TGT.vocab), padding_idx=self.pad_idx, smoothing=0.1)
+        self.optimizer = NoamOpt(self.model.src_embed[0].d_model, 1, 2000, torch.optim.Adam(self.model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
+        #self.devices = [device if device is not None else torch.device("cuda:0")]
         #self.loss_fn = run_epoch
         
-        super().__init__(params=params, model=self.model)
     
 
     
-    def __call__(self, data):
-        '''
-        inputs, targets = data
-        outputs = self.model(inputs)
-        loss = self.loss_fn(outputs, targets)
-        '''
-        self.model.train()
-        
-        run_epoch(data, self.model, MultiGPULossCompute(self.model.generator, self.criterion, opt=self.model_opt))
-        self.model.eval()
-        loss = run_epoch(data, self.model, MultiGPULossCompute(self.model.generator, self.criterion, opt=None))
-        #print(loss)
+    def __call__(self, batch):
+        start = time.time()
+        #inputs, targets = data
+        logger.info('src:', batch.src, 'trg:', batch.trg, 'src_mask:',
+                            batch.src_mask, 'trg_mask:', batch.trg_mask)
+        out = self.model.forward(batch.src, batch.trg, 
+                            batch.src_mask, batch.trg_mask)
+        logger.info('out:', out)
+        if self.mode == modes.TRAIN:
+            loss_compute = MultiGPULossCompute(self.model.generator, self.criterion, opt=self.optimizer)
+        if self.mode == modes.EVAL:
+            loss_compute = MultiGPULossCompute(self.model.generator, self.criterion, opt=None)
 
-        return loss
+        logger.info('trg_y:', batch.trg_y, 'ntokens:', batch.ntokens)
+        loss = loss_compute(out, batch.trg_y, batch.ntokens)
+        elapsed = time.time() - start
+        l = loss / batch.ntokens
+
+        logger.critical("Loss: %f Tokens per Sec: %f" % (l, batch.ntokens / elapsed))
+
+        '''
+        if self.mode == modes.TRAIN:
+            self.model.train()
+            loss = run_epoch(data, self.model, MultiGPULossCompute(self.model.generator, self.criterion, opt=self.model_opt))
+        if self.mode == modes.EVAL:
+            self.model.eval()
+            loss = run_epoch(data, self.model, MultiGPULossCompute(self.model.generator, self.criterion, opt=None))
+            #print(loss)
+        '''
+        return l
