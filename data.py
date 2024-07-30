@@ -35,7 +35,7 @@ global max_src_in_batch, max_tgt_in_batch
 #torch.cuda.set_device(device)
 
 # Function to load datasets
-def load_datasets(train_file, val_file, test_file):
+def load_datasets(train_file, val_file, test_file, want_fields=False):
     global train_data, val_data, test_data, pad_idx
     if train_data == None:
         train_data, val_data, test_data = TabularDataset.splits(
@@ -54,6 +54,8 @@ def load_datasets(train_file, val_file, test_file):
     if pad_idx == None:
         pad_idx = TGT.vocab.stoi["<blank>"]
     
+    if want_fields:
+        return SRC, TGT, pad_idx
     return train_data, val_data, test_data
 
 '''
@@ -219,9 +221,9 @@ def get_train_dataloader(params):
                                   #prefetch_factor = prefetch_factor, persistent_workers = persistent_workers
                                   )
     #train_iter = CustomDataLoader(train_data, batch_size = params["train_input"]["batch_size"], shuffle=params["train_input"]["shuffle"], batch_size_fn=batch_size_fn, train = True)
-    params["train_input"]["SRC"] = SRC
-    params["train_input"]["TGT"] = TGT
-    params["train_input"]["pad_idx"] = pad_idx
+    #params["train_input"]["SRC"] = SRC
+    #params["train_input"]["TGT"] = TGT
+    #params["train_input"]["pad_idx"] = pad_idx
     return train_dataloader
 
 def get_eval_dataloader(params):
