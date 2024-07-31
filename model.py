@@ -747,10 +747,11 @@ class TransmolModel(PyTorchBaseModel):
         logger.info("pad_idx: ", self.pad_idx)
         self.model = make_model(len(self.SRC.vocab), len(self.TGT.vocab), N=6)
         super().__init__(params=params, model=self.model, device=device)
-
+        #Maybe change the super call to this?:
+        #super(TransmolModel, self).__init__(params=params, model=self.model, device=device)
         self.criterion = LabelSmoothing(size=len(self.TGT.vocab), padding_idx=self.pad_idx, smoothing=0.1)
-        self.optimizer = NoamOpt(self.model.src_embed[0].d_model, 1, 2000, torch.optim.Adam(self.model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
-        #self.devices = [device if device is not None else torch.device("cuda:0")]
+        self.model_opt = NoamOpt(self.model.src_embed[0].d_model, 1, 2000, self.optimizer)
+
         #self.loss_fn = run_epoch
         
     
@@ -758,14 +759,14 @@ class TransmolModel(PyTorchBaseModel):
     
     def __call__(self, batch):
         start = time.time()
-        #inputs, targets = data
         logger.info('src:', batch.src, 'trg:', batch.trg, 'src_mask:',
                             batch.src_mask, 'trg_mask:', batch.trg_mask)
+        
         out = self.model.forward(batch.src, batch.trg, 
                             batch.src_mask, batch.trg_mask)
         logger.info('out:', out)
         if self.mode == modes.TRAIN:
-            loss_compute = MultiGPULossCompute(self.model.generator, self.criterion, opt=self.optimizer)
+            loss_compute = MultiGPULossCompute(self.model.generator, self.criterion, opt=self.model_opt)
         if self.mode == modes.EVAL:
             loss_compute = MultiGPULossCompute(self.model.generator, self.criterion, opt=None)
 
@@ -774,15 +775,6 @@ class TransmolModel(PyTorchBaseModel):
         elapsed = time.time() - start
         l = loss / batch.ntokens
 
-        logger.critical("Loss: %f Tokens per Sec: %f" % (l, batch.ntokens / elapsed))
+        logger.info("Loss: %f Tokens per Sec: %f" % (l, batch.ntokens / elapsed))
 
-        '''
-        if self.mode == modes.TRAIN:
-            self.model.train()
-            loss = run_epoch(data, self.model, MultiGPULossCompute(self.model.generator, self.criterion, opt=self.model_opt))
-        if self.mode == modes.EVAL:
-            self.model.eval()
-            loss = run_epoch(data, self.model, MultiGPULossCompute(self.model.generator, self.criterion, opt=None))
-            #print(loss)
-        '''
         return l
