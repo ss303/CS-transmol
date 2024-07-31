@@ -19,10 +19,10 @@ model:
 
 optimizer:
     optimizer_type: 'adam'
-    learning_rate: 0
+    learning_rate: 0.0
     beta1: 0.9
     beta2: 0.98
-    eps: 1e-9
+    eps: 0.000000001
 
 runconfig:
     max_steps: 50
